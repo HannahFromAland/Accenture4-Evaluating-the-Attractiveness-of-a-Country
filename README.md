@@ -21,7 +21,7 @@ A country wise comparative assessment can be done to assess the better investmen
 + Di Mu (dm3686)
 + Freddy Wong (ww2615)
 + Hanlin Yan (hy2654)
-+ Jace Yang (jy3174)
++ Jace Yang (jy3174) **Team Captain**
 + Yuan Heng (yh3416)
 
 #### 🧑🏻‍💼 Sponsor/Mentor:
