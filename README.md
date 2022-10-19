@@ -41,11 +41,11 @@ A country wise comparative assessment can be done to assess the better investmen
 
 - Inside the `Data/raw` is the original data we targeted, which were manually downloaded from the worldbank through databank.
 
-- `Data/1_Raw_Data_Cleaning.ipynb` processed and consolidate all the raw data.
+- `Data/1_Raw_Data_Cleaning.ipynb` processed and consolidate all the raw data, and output `Data/cleaned/Manufacturing_all.xlsx` and `Data/cleaned/Service_all.xlsx`
 
-- `Data/2_Variable_Selection.ipynb` filtered out some *bad* predictors base on data quality and their relation to target variable in terms of evidence & intuition.
+- `Data/2_Variable_Selection.ipynb` further filtered out some *bad* predictors base on data quality and their relation to target variable in terms of evidence & intuition, then output to `Data/cleaned/Service.xlsx` and `Data/cleaned/Manufacturing.xlsx`
 
-- `Data/3_Filling_Missingness.ipynb` will conduct NA imputation techniques, assess them, and generate output into the `Data/clean` to be used by the modeling part.
+- `Data/3_Filling_Missingness.ipynb` will conduct NA imputation techniques, assess them, and generate output into the `Data/clean/Manufacturing_filled` and `Data/clean/Service_filled` to be used by the modeling part.
 
 **Modeling:**
 - `Model/ARIMA` is our first baseline univariate method.
