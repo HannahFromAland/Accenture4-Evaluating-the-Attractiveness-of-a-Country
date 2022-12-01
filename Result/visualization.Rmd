@@ -1,0 +1,810 @@
+---
+title: "visualization"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Set up
+
+## Basics
+```{r}
+if(!require("rstudioapi")) install.packages("rstudioapi")
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+if(!require("dplyr")) install.packages("dplyr")
+if(!require("magrittr")) install.packages("magrittr")
+if(!require("data.table")) install.packages("data.table")
+if(!require("extrafont")) install.packages("extrafont")
+if(!require("htmlwidgets")) install.packages("htmlwidgets")
+if(!require("readxl")) install.packages("readxl")
+if(!require("extrafont")) install.packages("extrafont")
+if(!require("ggplot2")) install.packages("ggplot2")
+if(!require("tidyr")) install.packages("tidyr")
+if(!require("forcats")) install.packages("forcats")
+if(!require("feather")) install.packages("feather")
+if(!require("stringr")) install.packages("stringr")
+if(!require("grid")) install.packages("grid")
+if(!require("openxlsx")) install.packages("openxlsx")
+if(!require("plotly")) install.packages("plotly")
+if(!require("broom")) install.packages("broom")
+if(!require("lubridate")) install.packages("lubridate")
+if(!require("tibble")) install.packages("tibble")
+if(!require("purrr")) install.packages("purrr")
+if(!require("scales")) install.packages("scales")
+if(!require("reticulate")) install.packages("reticulate")
+if(!require("glue")) install.packages("glue")
+if(!require("ggh4x")) install.packages("ggh4x")
+
+options(scipen = 1000)
+
+
+writeEXCEL <- function(dfs, file = filename, fgFill = "#007b58", overwrite = F) {
+  options("openxlsx.borderColour" = fgFill)
+  options("openxlsx.borderStyle" = "thin")
+  options("openxlsx.maxWidth" = 35)
+  header_style <- createStyle(
+    textDecoration = "BOLD",
+    fontColour = "#FFFFFF",
+    fontSize = 12,
+    fontName = "Microsoft YaHei",
+    border = c("left", "right"),
+    borderColour = openxlsx_getOp("borderColour", "black"),
+    fgFill = fgFill,
+    halign = "center",
+    valign = "center",
+    wrapText = F,
+    indent = 0
+  )
+  
+  content_style <- createStyle(
+    fontColour = "black",
+    fontName = "Microsoft YaHei",
+    borderStyle = 'thin',
+    halign = "center",
+    valign = "center",
+    wrapText = F,
+    fontSize = 10,
+    indent = 0
+  )
+  if(inherits(dfs, "list")){
+    wb <- createWorkbook()
+    for(df_name in names(dfs)){
+      df = dfs[[df_name]]
+      # print(df)
+      addWorksheet(wb, df_name)
+      writeData(wb, df_name, df,
+                rowNames = FALSE,
+                colNames = TRUE,
+                startCol = 1,
+                startRow = 1,
+                xy = NULL,
+                withFilter=TRUE,
+                headerStyle = header_style,
+                borders = 'all',
+                borderStyle = 'thin'
+      )
+      addStyle(wb, df_name, content_style, cols=1:ncol(df), rows=2:(1+nrow(df)), gridExpand = T)
+      setColWidths(wb, df_name, cols = 1:ncol(df), widths = "auto")
+      freezePane(wb, df_name, firstRow = TRUE, firstCol = FALSE)
+    }
+    saveWorkbook(wb, file, overwrite = overwrite)
+    
+  }else{
+    
+    wb <- createWorkbook()
+    df_name = "sheet1"
+    df = dfs
+      
+    addWorksheet(wb, df_name)
+    writeData(wb, df_name, df,
+              rowNames = FALSE,
+              colNames = TRUE,
+              startCol = 1,
+              startRow = 1,
+              xy = NULL,
+              withFilter=TRUE,
+              headerStyle = header_style,
+              borders = 'all',
+              borderStyle = 'thin'
+    )
+    addStyle(wb, df_name, content_style, cols=1:ncol(df), rows=2:(1+nrow(df)), gridExpand = T)
+    setColWidths(wb, df_name, cols = 1:ncol(df), widths = "auto")
+    freezePane(wb, df_name, firstRow = TRUE, firstCol = FALSE)
+  
+  saveWorkbook(wb, file, overwrite = overwrite)
+    
+    # 
+    # write.xlsx(
+    #   dfs,
+    #   file = file,
+    #   #borders = 'all',
+    #   firstRow = TRUE,
+    #   asTable = TRUE,
+    #   withFilter = TRUE,
+    #   #colWidths = 50,
+    #   colWidths="auto",
+    #   headerStyle = header_style,
+    #   overwrite = overwrite
+    # )
+  }
+}
+
+readEXCEL <- function(path){
+  sheetnames <- openxlsx::getSheetNames(path)
+  input <- list()
+  for(sheet in sheetnames){
+    input[[sheet]] <- read.xlsx(path, sheet = sheet)
+  }
+  input
+}
+
+opposite_fill <- function(df, ...){
+  df %>%
+    mutate_at(vars(...),~ ifelse(is.na(lag(.x,1)) | .x!=lag(.x,1), .x, NA)) }
+```
+
+## ggplot
+```{r}
+if(!require("ggplot2")) install.packages("ggplot2")
+if(!require("ggshadow")) install.packages("ggshadow")  # 给线阴影
+if(!require("GGally")) install.packages("GGally") # ggpairs
+if(!require("PupillometryR")) install.packages("PupillometryR")  # 云雨图
+if(!require("patchwork")) install.packages("patchwork") # 拼图
+if(!require("ggrepel")) install.packages("ggrepel") # 文字
+if(!require("RColorBrewer")) install.packages("RColorBrewer") 
+
+#### 单位换算 ####
+
+addUnits_cn_better <- function(n) {
+  
+  labels <- ifelse(n < 0, paste0("-",addUnits_cn(-n)),  # less than thousands
+                   ifelse(n >= 0, addUnits_cn(n),  
+                          "NA"))
+  return(labels)
+}
+
+
+addUnits_cn <- function(n) {
+  
+  labels <- ifelse(n < 1e4, n,  # less than thousands
+                   ifelse(n < 1e8, paste0(round(n/1e4), '万'),
+                          ifelse(n < 1e12, paste0(round(n/1e8), '亿'),
+                                 #ifelse(n < 1e14, paste0(round(n/1e12), '百亿'),
+                                 ifelse(n < 1e16, paste0(round(n/1e12), '万亿'),
+                                        ifelse(n < 1e20, paste0(round(n/1e16), '亿亿'), n)))))
+  return(labels)
+}
+
+real_round <- function(num,n=1){
+  format(round(num,n), nsmall = n)
+}
+
+addUnits_real<- function(n) {
+  
+  labels <- ifelse(n < 1e4, n,  # less than thousands
+                   ifelse(n < 10e4, paste0(real_round(n/1e4, n=1), '万'),
+                          ifelse(n < 9e7, paste0(real_round(n/1e4, n=0), '万'),
+                                 ifelse(n < 10e8, paste0(real_round(n/1e8, n=1), '亿'),
+                                        ifelse(n < 1e12, paste0(real_round(n/1e8), '亿'),
+                                               #ifelse(n < 1e14, paste0(round(n/1e12), '百亿'),
+                                               ifelse(n < 1e16, paste0(real_round(n/1e12), '万亿'),
+                                                      ifelse(n < 1e20, paste0(real_round(n/1e16), '亿亿'), n)))))))
+  return(gsub(" ","",labels))
+}
+
+addUnits_cn_best <- function(n) {
+  
+  labels <- ifelse(n < 0, paste0("-",addUnits_real(-n)),  # less than thousands
+                   ifelse(n >= 0, addUnits_real(n),  
+                          "NA"))
+  return(labels)
+}
+
+addUnits_cn <- function(n) {
+  
+  labels <- ifelse(n < 1e4, n,  # less than thousands
+                   ifelse(n < 1e8, paste0(round(n/1e4), '万'),
+                          ifelse(n < 1e12, paste0(round(n/1e8), '亿'),
+                                 #ifelse(n < 1e14, paste0(round(n/1e12), '百亿'),
+                                 ifelse(n < 1e16, paste0(round(n/1e12), '万亿'),
+                                        ifelse(n < 1e20, paste0(round(n/1e16), '亿亿'), n)))))
+  return(labels)
+}
+
+
+
+
+addUnits_en <- function(n) {
+  labels <- ifelse(n < 1000, n,  # less than thousands
+                   ifelse(n < 1e6, paste0(round(n/1e3), 'k'),  # in thousands
+                          ifelse(n < 1e9, paste0(round(n/1e6), 'M'),  # in millions
+                                 ifelse(n < 1e12, paste0(round(n/1e9), 'B'), # in billions
+                                        ifelse(n < 1e15, paste0(round(n/1e12), 'T'), # in trillions
+                                               'too big!'
+                                        )))))
+  return(labels)
+}
+
+
+
+
+#### 字体 ####
+geom.text.size = 9 * 5 / 14
+
+FONT = "Microsoft YaHei"
+ppt_text = theme(
+  text = element_text(family = FONT,
+                      color = "black"),
+  plot.title = element_text(face="bold",
+                            hjust = 0.5,
+                            family = FONT,
+                            colour = "black",
+                            margin = margin(t = 5, r = 0, b = 5, l = 0),
+                            size = 14),
+  axis.text = element_text(family = FONT,
+                           color = "black"),
+  plot.subtitle = element_text(family = FONT,
+                               hjust = 0.5,
+                               size = 10,
+                               margin = margin(t = 2, r = 0, b = 2, l = 0)),
+  axis.title = element_text(size=11),
+  legend.title = element_text(size = 10,
+                              face = "bold",
+                              color = "black",
+                              family = FONT),
+  legend.text = element_text(size = 9,
+                             color = "black",
+                             family = FONT))
+
+
+theme_bw() -> themebw_help
+ppt_others = theme(
+  panel.background = themebw_help$legend.background,
+  panel.border = themebw_help$panel.border,
+  legend.background = themebw_help$legend.background,
+  plot.background = element_rect(color = "white"))
+#,
+#rect = element_rect(fill = "transparent") 
+
+theme(
+  panel.background = element_rect(fill = "transparent", colour = NA), # bg of the panel
+  plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+  panel.grid.major = element_blank(), # get rid of major grid
+  panel.grid.minor = element_blank(), # get rid of minor grid
+  panel.border = element_blank(),
+  legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+  legend.box.background = element_rect(fill = "transparent") # get rid of legend panel bg
+) -> empty_theme
+
+theme(
+  panel.background = element_rect(fill = "transparent",colour = NA), # bg of the panel
+  panel.grid.major = element_blank(), # get rid of major grid
+  panel.grid.minor = element_blank(), # get rid of minor grid
+  panel.border = element_blank(),
+  legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+  legend.box.background = element_rect(fill = "transparent") # get rid of legend panel bg
+) -> clean_theme
+
+theme_legend = theme(
+  legend.box.margin = margin(6, 6, 6, 6),
+  legend.background = element_rect(color = NA),
+  legend.box.background = element_blank()
+)
+
+my_theme = theme(
+  panel.grid.major.y = element_line(linetype = "dashed", color = "gray")
+)
+
+
+only_x = theme(
+  panel.grid.major.x = element_line(linetype = "dashed", color = "lightgray"),
+  panel.grid.major.y = element_blank()
+)
+
+only_y = theme(
+  panel.grid.major.y = element_line(linetype = "dashed"),
+  panel.grid.major.x = element_blank()
+)
+
+both_xy = theme(
+  panel.grid.major.y = element_line(linetype = "dashed", color = "lightgray"),
+  panel.grid.major.x = element_line(linetype = "dashed", color = "lightgray")
+)
+
+no_xy = theme(
+  panel.grid.major.y = element_blank(),
+  panel.grid.major.x = element_blank()
+)
+
+light_x = theme(
+  panel.grid.major.y = element_blank(),
+  panel.grid.major.x = element_line(linetype = "dashed", color = alpha("gray",0.65))
+)
+
+light_y = theme(
+  panel.grid.major.x = element_blank(),
+  panel.grid.major.y = element_line(linetype = "dashed", color = alpha("gray",0.65))
+)
+
+light_xy = theme(
+  panel.grid.major.y = element_line(linetype = "dashed", color = alpha("gray",0.65)),
+  panel.grid.major.x = element_line(linetype = "dashed", color = alpha("gray",0.65))
+)
+
+
+get_lightx <-function(alpha = 0.65, linetype = "dotted"){return(theme(
+  panel.grid.major.y = element_blank(),
+  panel.grid.major.x = element_line(linetype = linetype, color = alpha("gray",alpha))
+))}
+
+get_lightxy <-function(alpha = 0.65, linetype = "dotted"){return(theme(
+  panel.grid.major.y = element_line(linetype = linetype, color = alpha("gray",alpha)),
+  panel.grid.major.x = element_line(linetype = linetype, color = alpha("gray",alpha))
+))}
+
+
+
+
+both_dashed = theme(
+  panel.grid.major.y = element_line(linetype = "dashed", color = "lightgray"),
+  panel.grid.major.x = element_line(linetype = "dashed", color = "lightgray")
+)
+
+dotted_line = theme(
+  panel.grid.major.y = element_line(linetype = "dotted",color = "gray")
+  #panel.grid.minor.y = element_line(linetype = "dotted",color = "gray")
+  #panel.grid.minor.y = elemnel.grid.linetype .y"dashed", color = "gray")
+)
+
+my_theme_rev = theme(
+  panel.grid.major.x = element_line(linetype = "dashed", color = "gray"),
+  panel.grid.major.y = element_blank()
+)
+
+ppt_text + ppt_others + empty_theme + theme_legend + my_theme -> tencent_theme
+ppt_text + ppt_others + clean_theme + theme_legend + my_theme -> capstone_theme
+
+#### ggplot2 其他主题
+small_legend = theme(legend.key.size = unit(0.85,"line"))
+#### ggplot2 坐标轴调整 ####
+show_all_x <- function(data, p, step = 1, len = NA, col = "日期"){
+  data %>% distinct_list(col) -> date_list
+  if(is.na(len)){
+    p + scale_x_continuous(breaks = seq(min(date_list), max(date_list), by = step))
+  }else{
+    p + scale_x_continuous(breaks = seq(min(date_list), max(date_list), length.out = len))
+  }
+  
+}
+
+# 百分比
+percenty <- scale_y_continuous(expand = c(0, 0), 
+                               labels = scales::percent,
+                               breaks = scales::breaks_pretty(9))
+
+percentx <- scale_x_continuous(expand = c(0, 0), 
+                               labels = scales::percent,
+                               breaks = scales::breaks_pretty(9))
+
+
+
+get_percent_y <- function(n_breaks=10, accuracy=1){
+  scale_y_continuous(
+    #expand = c(0, 0), 
+    labels = percent_format(accuracy),
+    breaks = scales::breaks_pretty(n_breaks))
+}
+
+get_percent_x <- function(n_breaks=10, accuracy=1){
+  scale_x_continuous(
+    #expand = c(0, 0), 
+    labels = percent_format(accuracy),
+    breaks = scales::breaks_pretty(n_breaks))
+}
+
+# 大数字
+bigy <- scale_y_continuous(expand = c(0, 0, 0.02, 0), labels = addUnits_cn_best, n.breaks = 10)
+bigx <- scale_x_continuous(expand = c(0, 0, 0.02, 0), labels = addUnits_cn_best, n.breaks = 10)
+
+
+get_bigy <- function(limits=c(NA, NA))(
+  scale_y_continuous(expand = c(0, 0), 
+                     limits = limits,
+                     n.breaks = 10,
+                     labels = addUnits_cn_best)
+)
+
+# 自己加后缀
+unity <- function(unit){
+  return(scale_y_continuous(expand = c(0, 0), labels = function(x) paste0(x,unit)))
+}
+
+
+#### 颜色
+all_blues = brewer.pal(9,"Blues")[3:9]
+all_blues_lighter = brewer.pal(9,"Blues")[3:8]
+all_spectral = brewer.pal(10,"Spectral")[c(1:5,7:10)]
+blues = all_blues
+get_blues = function(n){
+  colorRampPalette(all_blues)(n)}
+
+get_blues_ =function(df, ...){
+  
+  df %>% ungroup %>%
+    distinct(...) %>% nrow -> n
+  colorRampPalette(all_blues)(n)
+}
+
+
+get_blues_lighter =function(df, ...){
+  
+  df %>% ungroup %>%
+    distinct(...) %>% nrow -> n
+  colorRampPalette(all_blues_lighter)(n)
+}
+
+get_spectral_ =function(df, ...){
+  
+  df %>% ungroup %>%
+    distinct(...) %>% nrow -> n
+  colorRampPalette(all_spectral)(n)
+}
+
+get_blues_plus =function(df, ...){
+  all_blues = brewer.pal(9,"Blues")[2:9]
+  df %>% ungroup %>%
+    distinct(...) %>% nrow -> n
+  colorRampPalette(all_blues)(n)}
+
+get_blues_less =function(df, ...){
+  all_blues = brewer.pal(9,"Blues")[4:9]
+  df %>% ungroup %>%
+    distinct(...) %>% nrow -> n
+  colorRampPalette(all_blues)(n)}
+```
+
+
+
+
+# Data Preparation
+```{r, fig.height=2, fig.width=3}
+methods = c(#'ARIMA',
+            'VAR',
+            'Uni-LSTM',
+            'Multi-LSTM',
+            'PyMC3',
+            'Orbit',
+            'Tensorflow Probability',
+            'Prophet',
+            'Uni-Bayes LSTM',
+            'Multi-Bayes LSTM')
+country_codes = c('AUS', 'BRA', 'CAN', 'CHN', 'GBR', 'IND', 'JPN', 'SGP', 'USA')
+country_names = c('Australia', 'Brazil', 'India', 'China', 'United Kingdom', 'India', 'Japan', 'Singapore', 'United States')
+#glue("{content_type}shap数据/{group_name}.{file_type}"
+
+task_names = c('Manufacturing', 'Service')
+task_labels = c('Manufacturing_value added_%_of_GDP', 'Services_value_added_%_of_GDP')
+```
+
+```{r, fig.height=2, fig.width=3}
+logs = tibble()
+for(task_id in 1:length(task_names)){
+  task = task_names[task_id]
+  y_name = task_labels[task_id]
+  for(con in country_codes){
+    read_excel(glue("../Data/cleaned/{task}_filled.xlsx"), sheet=con) %>%
+      transmute(Year, 
+                y_value = !!sym(y_name), 
+                y_lower_bound=NA, 
+                y_upper_bound=NA, 
+                country=con,
+                y_type='True Value',
+                method = 'True Value',
+                task = task) %>%
+      bind_rows(logs) -> logs
+  }
+  
+  for(method in methods){
+    for(con in country_codes){
+        path = glue("{method}/{task}/{con}.xlsx")
+        if(file.exists(path)){
+          read_excel(glue("{method}/{task}/{con}.xlsx"), sheet='y_fitted_on_begin_2016') %>%
+            mutate(country = con, 
+                   y_type='Fitted Value',
+                   method = method,
+                   task = task) %>%
+            bind_rows(logs) -> logs
+          read_excel(glue("{method}/{task}/{con}.xlsx"), sheet='y_pred_on_2017_2021') %>%
+            mutate(country = con, 
+                   y_type='Predicted Value',
+                   method = method,
+                   task = task) %>%
+            rowwise() %>%
+            mutate(y_lower_bound = max(0, y_lower_bound),
+                   y_upper_bound = min(100, y_upper_bound)) %>%
+            ungroup %>%
+            filter(Year <= 2021) %>%
+            bind_rows(logs) -> logs
+        }
+    }
+  }
+}
+
+logs %>%
+  filter(y_type=='True Value') %>% 
+  select(task, Year, country, true_y = y_value) -> true_y
+
+logs %>%
+  left_join(true_y) %>%
+  group_by(task, country, method) %>%
+  filter(y_type == 'Predicted Value') %>%
+  summarise(mape = mean(abs((y_value - true_y) / y_value)),
+            mae = mean(abs((y_value - true_y)))) %>% 
+  mutate(rmse = mae^0.5,
+         weight_1 = (1 / mape)/sum(1 / mape),
+         weight_2 = (1 / mae)/sum(1 / mae),
+         weight_3 = (1 / rmse)/sum(1 / rmse),
+         weight = (weight_1+weight_2+weight_3) / sum(weight_1+weight_2+weight_3)) %>%
+  ungroup -> model_weights
+
+
+logs_future = tibble()
+for(task_id in 1:length(task_names)){
+  task = task_names[task_id]
+  y_name = task_labels[task_id]
+  for(method in methods){
+    for(con in country_codes){
+        path = glue("{method}/{task}/{con}.xlsx")
+        if(file.exists(path)){
+          read_excel(glue("{method}/{task}/{con}.xlsx"), sheet='y_fitted_on_begin_2021') %>%
+            filter(!is.na(y_value)) %>%
+            mutate(country = con, 
+                   y_type='Fitted Value',
+                   y_value = as.double(y_value),
+                   method = method,
+                   task = task) %>% 
+            bind_rows(logs_future) -> logs_future
+          
+          read_excel(glue("{method}/{task}/{con}.xlsx"), sheet='y_pred_on_2022_2026') %>%
+            mutate(country = con, 
+                   y_type='Predicted Value',
+                   method = method,
+                   task = task) %>%
+            filter(Year <= 2026) %>%
+            bind_rows(logs_future) -> logs_future
+        }
+    }
+  }
+  
+  if(logs_future %>% filter(is.na(y_value)) %>% nrow() >= 1){
+    print(glue("{method}/{task}/{con}.xlsx"))
+  }
+}
+
+logs_future %>%
+  inner_join(model_weights) %>%
+  group_by(task, country, y_type, Year) %>%
+  summarise(y_value = sum(y_value * weight) / sum(weight)) %>%
+  ungroup -> blended_future
+```
+
+```{r}
+model_weights %>%
+  select(task, country, method, mape) %>%
+  mutate(method = factor(method, levels=methods)) %>%
+  arrange(method) %>%
+  pivot_wider(id_cols = c(task, method), names_from = country, values_from = mape) %>% 
+  rowwise() %>%
+  mutate(`Average MAPE`= rowMeans(across(country_codes))) %>% 
+  select(task, method, `Average MAPE`) %>%
+  pivot_wider(id_cols = c(task), names_from = method, values_from = `Average MAPE`) %>%
+  rename(Task = task) %>%
+  writeEXCEL('mape_result.xlsx', overwrite=T)
+
+model_weights %>% 
+  select(task, country, method, weight) %>%
+  mutate(method = factor(method, levels=methods)) %>%
+  arrange(method) %>%
+  pivot_wider(id_cols = c(task, method), names_from = country, values_from = weight) %>% 
+  rowwise() %>%
+  mutate(`Average Weight`= rowMeans(across(country_codes))) %>% 
+  select(task, method, `Average Weight`) %>%
+  pivot_wider(id_cols = c(task), names_from = method, values_from = `Average Weight`) %>%
+  rename(Task = task) %>%
+  writeEXCEL('weight_result.xlsx', overwrite=T)
+
+inner_join(
+  logs %>%
+    filter(Year == 2021, y_type == 'True Value') %>%
+    select(task, country, now = y_value),
+  blended_future %>% 
+    filter(y_type == 'Predicted Value') %>%
+    select(task, country, Year, future = y_value) %>%
+    filter(Year == 2026)
+) %>%
+  mutate(change = future - now) %>%
+  group_by(country) %>%
+  mutate(x = mean(change)) %>%
+  ungroup() %>%
+  arrange(-x) %>%
+  pivot_wider(id_cols = c(task), names_from = country, values_from = change) %>%
+  rename(Task = task) %>%
+  writeEXCEL('change_result.xlsx', overwrite=T)
+
+  
+
+    
+  # lef
+  # mutate(method = factor(method, levels=methods)) %>%
+  # arrange(method) %>%
+  # pivot_wider(id_cols = c(task, method), names_from = country, values_from = weight) %>% 
+  # rowwise() %>%
+  # mutate(`Average Weight`= rowMeans(across(country_codes))) %>% 
+  # select(task, method, `Average Weight`) %>%
+  # pivot_wider(id_cols = c(task), names_from = method, values_from = `Average Weight`) %>%
+  # writeEXCEL('weight_result.xlsx', overwrite=T)
+  # # sum(vars(country_codes))) %>% View
+```
+
+# Plot
+
+## Fitted
+
+
+```{r}
+logs %>%
+  mutate(method = factor(method, levels = methods)) %>% 
+  # filter(country %in% c('IND', 'USA', 'CHN')) %>%
+ggplot() +
+aes(x = Year,
+    y = y_value,
+    color = method) +
+  geom_ribbon(aes(ymin = y_lower_bound,
+                  ymax = y_upper_bound,
+                  fill = method), 
+              color = NA,
+              show.legend = F,
+              alpha = .1) +
+  geom_point(data=. %>% filter(y_type == 'True Value'),
+             aes(color=y_type),
+             size=0.5,
+             color = 'black',
+             show.legend = F,
+             alpha=0.9) +
+  geom_line(data = . %>% filter(y_type != 'True Value'),
+            alpha=0.7,
+            size=0.5,
+            aes(linetype=y_type)) +
+  scale_x_continuous(#limits = c(1990, NA),
+                     breaks =seq(#1990,
+                                 min(logs %>% pull(`Year`)),
+                                 max(logs %>% pull(`Year`)), 
+                                 by = 5)) +
+  facet_grid2(country ~ task, scales = 'free', switch="y", independent = "y") +
+  capstone_theme + no_xy +
+  labs(y = '% of GDP', color='Models', linetype='Data Type') +
+  theme(panel.background = element_rect(fill = "transparent",colour = 'lightgray'),
+        #legend.position="bottom",
+        #legend.box="vertical",
+        #legend.margin=margin()
+        legend.box.margin = margin(0, 0, 0, 0),
+        ) +
+  scale_linetype_manual(values=c("solid", "dashed")) -> p
+
+ggsave(glue("Fitted.png"),
+       plot = p,
+       width = 5 * 2,
+       height = 4 * 2,
+       units = 'in', 
+       dpi=450)
+
+```
+
+## Future for each model
+
+```{r, fig.height=2, fig.width=3}
+for(model in methods){
+  print(model)
+
+  logs_future %>% 
+    filter(method == model) %>%
+  
+  ggplot() +
+  
+    aes(x = Year,
+        y = y_value,
+        color = country) +
+    geom_line(data = . %>% filter(y_type != 'True Value'),
+              alpha=0.7,
+              size=0.5,
+              aes(linetype=y_type)) +
+    geom_point(data=logs %>% filter(y_type == 'True Value'),
+               size=0.6,
+               alpha=0.4) +
+    scale_x_continuous(breaks = seq(min(logs_future %>% pull(`Year`)),
+                                    max(logs_future %>% pull(`Year`)), 
+                                    by = 5)) +
+    facet_grid2(task ~., scales = 'free_y', switch="y") +
+    geom_text_repel(data=. %>% group_by(country, task) %>% filter(Year==max(Year)), 
+               aes(x = Year + 1,
+                   label=country), 
+               show.legend = F,
+               size=2.5,
+               hjust=0.5,
+               vjust=0.5,
+               segment.size=0.25,
+               nudge_x=0.5,
+               #nudge_y =0,
+               #force=1,
+               direction = "y",
+               #force=4,
+               family = "Microsoft YaHei",
+               #fill = '#FFFFFF55'
+               ) +
+    labs(title = model) +
+    capstone_theme + no_xy +
+    theme(panel.background = element_rect(fill = "transparent",colour = 'lightgray'),
+          legend.position="bottom") +
+    scale_linetype_manual(values=c("solid", "dashed"))  -> p
+  
+  ggsave(glue("{model}.png"),
+         plot = p,
+         width = 4.5,
+         height = 9,
+         units = 'in', 
+         dpi=450)
+}
+```
+
+## Future for blended model
+
+
+```{r}
+ggplot(blended_future) +
+  
+  aes(x = Year,
+      y = y_value,
+      color = country) +
+  geom_line(data = . %>% filter(y_type != 'True Value'),
+            alpha=0.7,
+            size=0.5,
+            aes(linetype=y_type)) +
+  geom_point(data=logs %>% filter(y_type == 'True Value'),
+             size=0.6,
+             alpha=0.4) +
+  scale_x_continuous(breaks = seq(min(logs_future %>% pull(`Year`)),
+                                  max(logs_future %>% pull(`Year`)), 
+                                  by = 5)) +
+  facet_grid2(task ~., scales = 'free_y', switch="y") +
+  geom_text_repel(data=. %>% group_by(country, task) %>% filter(Year==max(Year)), 
+             aes(x = Year + 1,
+                 label=country), 
+             show.legend = F,
+             size=2.5,
+             hjust=0.5,
+             vjust=0.5,
+             segment.size=0.25,
+             nudge_x=0.5,
+             #nudge_y =0,
+             #force=1,
+             direction = "y",
+             #force=4,
+             family = "Microsoft YaHei",
+             #fill = '#FFFFFF55'
+             ) +
+  # labs(title = method) +
+  capstone_theme + no_xy +
+  theme(panel.background = element_rect(fill = "transparent",colour = 'lightgray'),
+        legend.position="bottom") +
+  scale_linetype_manual(values=c("solid", "dashed"))  -> p
+
+ggsave(glue("Predict.png"),
+       plot = p,
+       width = 4.5,
+       height = 9,
+       units = 'in', 
+       dpi=450)
+```
+
+
