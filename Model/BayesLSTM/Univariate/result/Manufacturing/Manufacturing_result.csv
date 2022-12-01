@@ -1,0 +1,19 @@
+Country,Type,MAE,RMSE,MAPE
+Australia,Multivariate,3.3471,3.5225,1.1082
+Australia,Univariate,3.5391,3.6793,0.7758
+Brazil,Multivariate,2.0291,2.6219,0.7167
+Brazil,Univariate,2.2585,2.5218,0.207
+Canada,Multivariate,2.2085,2.6054,0.0849
+Canada,Univariate,4.3611,4.6569,0.1734
+China,Multivariate,3.4187,3.4568,0.0526
+China,Univariate,3.1826,3.3005,0.0594
+India,Multivariate,1.3617,1.5407,0.0796
+India,Univariate,1.1464,1.2853,0.0335
+Japan,Multivariate,1.9492,2.121,0.0537
+Japan,Univariate,0.5718,0.6988,0.0859
+Singapore,Multivariate,4.8027,4.9906,0.3168
+Singapore,Univariate,4.406,4.6023,0.1715
+United Kingdom,Multivariate,1.6684,2.2853,0.0435
+United Kingdom,Univariate,5.0935,5.0994,0.4342
+United States,Multivariate,1.2744,1.3164,0.047
+United States,Univariate,2.237,2.2872,0.0995
