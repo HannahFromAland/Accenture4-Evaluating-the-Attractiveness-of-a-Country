@@ -92,7 +92,11 @@ def train(wg, args, model, rbscaler):
             outputs = model(X_batch.float())
 
             # Calculate Loss
-            loss = model.compute_loss(outputs.reshape(-1), y_batch)
+            # loss = model.sample_elbo(inputs=X_batch,
+            #                labels=y_batch,
+            #                criterion=torch.nn.L1Loss(),
+            #                sample_nbr=3)
+            loss = model.compute_loss(X_batch, y_batch, outputs)
             # Getting gradients w.r.t. parameters
             loss.backward()
             # Updating parameters
@@ -148,7 +152,7 @@ def validation(args, model, wg):
                   X_batch = X_batch.requires_grad_(False)
                   # Forward pass only to get logits/output
                   outputs = model(X_batch.float())
-                  loss = model.compute_loss(outputs.reshape(-1), y_batch)
+                  loss = model.compute_loss(X_batch, y_batch, outputs)
                   losses.append(loss.data.item()) # store loss
       val_loss = np.mean(losses) # mean loss of one epochh
       return val_loss
